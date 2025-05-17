@@ -2,7 +2,7 @@ import requests
 from pythonosc import dispatcher, osc_server, udp_client
 import threading
 from config import *
-
+last_shock_time = 0
 def electrocution() -> requests.Response:
     url = "https://api.openshock.app/2/shockers/control"
     headers = {
@@ -40,7 +40,6 @@ class OSCForwarder:
         self.custom_handlers.append((match_fn, handler_fn))
 
     def _forward_handler(self, address: str, *args):
-        print(f"Received OSC message: {address} {args}")
         for match_fn, handler_fn in self.custom_handlers:
             if match_fn(address, args):
                 handler_fn(address, args)
@@ -59,10 +58,21 @@ class OSCForwarder:
 
 if __name__ == "__main__":
     def match_shockosc(addr, args):
-        return addr.startswith("/avatar/parameters/ShockOsc")
+        if not addr.startswith("/avatar/parameters/ShockOsc"):
+            return False
+        if len(args) != 1:
+            return False
+        value = args[0]
+        return value in (0, 1, 0.0, 1.0)
 
     def on_shockosc(addr, args):
+        global last_shock_time
+        now = time.time()
+        if now - last_shock_time < cooldown_seconds:
+            print(f"⏳ Cooldown active: {round(cooldown_seconds - (now - last_shock_time), 2)}s remaining")
+            return
         print(f"⚡ ShockOsc param matched: {addr} -> {args}")
+        last_shock_time = now
         electrocution()
 
     forwarder = OSCForwarder(
